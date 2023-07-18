@@ -8,14 +8,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/juju/collections/set"
 	"github.com/juju/names/v4"
 
 	"github.com/SimonRichardson/juju-dqlite-backstop/agent"
 	"github.com/SimonRichardson/juju-dqlite-backstop/database"
+	"github.com/SimonRichardson/juju-dqlite-backstop/database/dqlite"
 	"github.com/SimonRichardson/juju-dqlite-backstop/version"
 )
 
@@ -60,7 +63,57 @@ func main() {
 	nodeInfo, err := nodeManager.ClusterServers(ctx)
 	checkErr("get cluster servers", err)
 
-	fmt.Println("current clustered servers:", nodeInfo)
+	// If we're the only node in the cluster, then we're done.
+	if len(nodeInfo) == 1 {
+		fmt.Fprintf(os.Stderr, "unable to perform dqlite backstop with one node\n")
+		os.Exit(0)
+	}
+
+	addresses, err := agent.APIAddresses()
+	checkErr("get api addresses", err)
+
+	// If the number of addresses matches the number of nodes, then we're done.
+	if numAddresses := len(addresses); numAddresses == len(nodeInfo) {
+		fmt.Fprintf(os.Stderr, "unable to perform dqlite backstop action where the number addresses match the number of nodes\n")
+		os.Exit(0)
+	} else if numAddresses > 1 {
+		fmt.Fprintf(os.Stderr, "unable to perform dqlite backstop action where the number addresses is greater than one\n")
+		os.Exit(0)
+	}
+
+	hosts := set.NewStrings()
+	for _, info := range nodeInfo {
+		host, _, err := net.SplitHostPort(info.Address)
+		checkErr("split api host port", err)
+		hosts.Add(host)
+	}
+
+	var (
+		leader dqlite.NodeInfo
+		found  bool
+	)
+	for _, info := range nodeInfo {
+		host, _, err := net.SplitHostPort(info.Address)
+		checkErr("split node host port", err)
+		if hosts.Contains(host) {
+			leader = info
+			found = true
+			break
+		}
+	}
+	if !found {
+		fmt.Fprintf(os.Stderr, "unable to find leader node\n")
+		os.Exit(1)
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = nodeManager.SetClusterServers(ctx, []dqlite.NodeInfo{leader})
+	checkErr("set cluster servers", err)
+
+	fmt.Println("dqlite backstop action complete")
+	fmt.Println("please restart the controller machine agents using systemctl")
 }
 
 func checkErr(label string, err error) {

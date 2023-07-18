@@ -78,6 +78,11 @@ func (formatter_2_0) unmarshal(data []byte) (*configInternal, error) {
 		model:      modelTag,
 		caCert:     format.CACert,
 	}
+	if len(format.APIAddresses) > 0 {
+		config.apiDetails = &apiDetails{
+			addresses: format.APIAddresses,
+		}
+	}
 	if len(format.ControllerKey) != 0 {
 		config.servingInfo = &StateServingInfo{
 			Cert:              format.ControllerCert,
