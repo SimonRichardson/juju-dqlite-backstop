@@ -113,7 +113,10 @@ func main() {
 	checkErr("set cluster servers", err)
 
 	fmt.Println("dqlite backstop action complete")
-	fmt.Println("please restart the controller machine agents using systemctl")
+	fmt.Println("please restart the controller machine agents using:")
+	fmt.Println("")
+	fmt.Printf("\tsystemctl restart jujud-%s.service\n", args.controllerTag)
+	fmt.Println("")
 }
 
 func checkErr(label string, err error) {
