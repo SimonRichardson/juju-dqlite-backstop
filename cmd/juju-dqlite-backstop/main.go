@@ -59,24 +59,32 @@ func main() {
 	_, err = nodeManager.EnsureDataDir()
 	checkErr("ensure data dir", err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// If we've already got a local node info, then we can just use that.
+	// Otherwise we need to find the leader node and use that from the api
+	// addresses.
+	var clusterNodes []dqlite.NodeInfo
+	if localInfo, err := nodeManager.NodeInfo(); err == nil {
+		clusterNodes = []dqlite.NodeInfo{localInfo}
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-	nodeInfo, err := nodeManager.ClusterServers(ctx)
-	checkErr("get cluster servers", err)
+		nodeInfo, err := nodeManager.ClusterServers(ctx)
+		checkErr("get cluster servers", err)
 
-	addresses, err := agent.APIAddresses()
-	checkErr("get api addresses", err)
+		addresses, err := agent.APIAddresses()
+		checkErr("get api addresses", err)
 
-	clusterNodes, err := findLeaderNode(nodeInfo, addresses)
-	checkErr("unable to locate cluster nodes", err)
+		clusterNodes, err = findLeaderNode(nodeInfo, addresses)
+		checkErr("unable to locate cluster nodes", err)
+	}
 
 	fmt.Println("updating cluster.yaml")
 	fmt.Println("")
 	bytes, _ := yaml.Marshal(clusterNodes)
 	fmt.Println(string(bytes))
 
-	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	err = nodeManager.SetClusterServers(ctx, clusterNodes)
