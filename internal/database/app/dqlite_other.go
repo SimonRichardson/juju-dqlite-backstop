@@ -14,7 +14,7 @@ import (
 	"github.com/juju/errors"
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/SimonRichardson/juju-dqlite-backstop/database/client"
+	"github.com/SimonRichardson/juju-dqlite-backstop/internal/database/client"
 )
 
 // Option can be used to tweak app parameters.

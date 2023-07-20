@@ -18,10 +18,10 @@ import (
 	"github.com/juju/errors"
 	"gopkg.in/yaml.v3"
 
-	"github.com/SimonRichardson/juju-dqlite-backstop/agent"
-	"github.com/SimonRichardson/juju-dqlite-backstop/database/app"
-	"github.com/SimonRichardson/juju-dqlite-backstop/database/client"
-	"github.com/SimonRichardson/juju-dqlite-backstop/database/dqlite"
+	"github.com/SimonRichardson/juju-dqlite-backstop/internal/agent"
+	"github.com/SimonRichardson/juju-dqlite-backstop/internal/database/app"
+	"github.com/SimonRichardson/juju-dqlite-backstop/internal/database/client"
+	"github.com/SimonRichardson/juju-dqlite-backstop/internal/database/dqlite"
 )
 
 const (

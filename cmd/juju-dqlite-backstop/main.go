@@ -15,10 +15,12 @@ import (
 
 	"github.com/juju/collections/set"
 	"github.com/juju/names/v4"
+	"gopkg.in/yaml.v3"
 
-	"github.com/SimonRichardson/juju-dqlite-backstop/agent"
-	"github.com/SimonRichardson/juju-dqlite-backstop/database"
-	"github.com/SimonRichardson/juju-dqlite-backstop/database/dqlite"
+	"github.com/SimonRichardson/juju-dqlite-backstop/internal/agent"
+	"github.com/SimonRichardson/juju-dqlite-backstop/internal/database"
+	"github.com/SimonRichardson/juju-dqlite-backstop/internal/database/dqlite"
+	internalnet "github.com/SimonRichardson/juju-dqlite-backstop/internal/net"
 	"github.com/SimonRichardson/juju-dqlite-backstop/version"
 )
 
@@ -63,53 +65,21 @@ func main() {
 	nodeInfo, err := nodeManager.ClusterServers(ctx)
 	checkErr("get cluster servers", err)
 
-	// If we're the only node in the cluster, then we're done.
-	if len(nodeInfo) == 1 {
-		fmt.Fprintf(os.Stderr, "unable to perform dqlite backstop with one node\n")
-		os.Exit(0)
-	}
-
 	addresses, err := agent.APIAddresses()
 	checkErr("get api addresses", err)
 
-	// If the number of addresses matches the number of nodes, then we're done.
-	if numAddresses := len(addresses); numAddresses == len(nodeInfo) {
-		fmt.Fprintf(os.Stderr, "unable to perform dqlite backstop action where the number addresses match the number of nodes\n")
-		os.Exit(0)
-	} else if numAddresses > 1 {
-		fmt.Fprintf(os.Stderr, "unable to perform dqlite backstop action where the number addresses is greater than one\n")
-		os.Exit(0)
-	}
+	clusterNodes, err := findLeaderNode(nodeInfo, addresses)
+	checkErr("unable to locate cluster nodes", err)
 
-	hosts := set.NewStrings()
-	for _, info := range nodeInfo {
-		host, _, err := net.SplitHostPort(info.Address)
-		checkErr("split api host port", err)
-		hosts.Add(host)
-	}
-
-	var (
-		leader dqlite.NodeInfo
-		found  bool
-	)
-	for _, info := range nodeInfo {
-		host, _, err := net.SplitHostPort(info.Address)
-		checkErr("split node host port", err)
-		if hosts.Contains(host) {
-			leader = info
-			found = true
-			break
-		}
-	}
-	if !found {
-		fmt.Fprintf(os.Stderr, "unable to find leader node\n")
-		os.Exit(1)
-	}
+	fmt.Println("updating cluster.yaml")
+	fmt.Println("")
+	bytes, _ := yaml.Marshal(clusterNodes)
+	fmt.Println(string(bytes))
 
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err = nodeManager.SetClusterServers(ctx, []dqlite.NodeInfo{leader})
+	err = nodeManager.SetClusterServers(ctx, clusterNodes)
 	checkErr("set cluster servers", err)
 
 	fmt.Println("dqlite backstop action complete")
@@ -166,4 +136,54 @@ func promptYN(question string) bool {
 	default:
 		return false
 	}
+}
+
+func findLeaderNode(nodeInfo []dqlite.NodeInfo, addresses []string) ([]dqlite.NodeInfo, error) {
+	// If the number of addresses matches the number of nodes, then work out
+	// which ip address is actually ours. Then we can remove all the others
+	// from the node list.
+	var addrs set.Strings
+	if len(nodeInfo) == 1 || len(addresses) > 1 {
+		var err error
+		addrs, err = internalnet.ExternalIPs()
+		if err != nil {
+			return nil, fmt.Errorf("unable to find external ips: %w", err)
+		}
+	} else {
+		for _, addr := range addresses {
+			addrs.Add(addr)
+		}
+	}
+
+	hosts := set.NewStrings()
+	for _, addr := range addrs.Values() {
+		var host string
+		if strings.Contains(addr, ":") {
+			var err error
+			host, _, err = net.SplitHostPort(addr)
+			checkErr("split host port", err)
+		} else {
+			host = addr
+		}
+		hosts.Add(host)
+	}
+
+	var (
+		leader dqlite.NodeInfo
+		found  bool
+	)
+	for _, info := range nodeInfo {
+		host, _, err := net.SplitHostPort(info.Address)
+		checkErr("split node host port", err)
+		if hosts.Contains(host) {
+			leader = info
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("unable to find leader node")
+	}
+
+	return []dqlite.NodeInfo{leader}, nil
 }

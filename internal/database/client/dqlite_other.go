@@ -9,7 +9,7 @@ import (
 	"context"
 	"net"
 
-	"github.com/SimonRichardson/juju-dqlite-backstop/database/dqlite"
+	"github.com/SimonRichardson/juju-dqlite-backstop/internal/database/dqlite"
 )
 
 type Client struct{}
